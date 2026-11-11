@@ -1,0 +1,15 @@
+name: test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Leak check
+        run: python3 scripts/check_no_leaks.py
+      - name: Docs check
+        run: python3 scripts/check_docs.py
+      - name: Tests
+        run: scripts/run_tests.sh
