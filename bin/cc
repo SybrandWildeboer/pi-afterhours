@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# cc <profile> [claude args...]: run Claude Code with its own config dir (own login, settings, history).
+# Delegate: cc work --bg "task"  |  see all: cc-agents  |  cc <profile> attach|logs|stop <id>
+set -euo pipefail
+p=${1:?usage: cc <profile> [claude args...]}; shift
+[[ $p =~ ^[A-Za-z0-9_-]+$ ]] || { echo "cc: profile name must be letters, digits, - or _" >&2; exit 2; }
+export CLAUDE_CONFIG_DIR="$HOME/.claude-profiles/$p"
+mkdir -p "$CLAUDE_CONFIG_DIR"
+exec claude "$@"

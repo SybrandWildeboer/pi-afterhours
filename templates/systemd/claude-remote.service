@@ -1,0 +1,16 @@
+[Unit]
+Description=Claude Remote Control (personal profile, for the phone)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=@PROJECTS@
+Environment=CLAUDE_CONFIG_DIR=%h/.claude-profiles/personal
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# remote-control draws a terminal UI, so give it a pseudo-terminal
+ExecStart=/usr/bin/script -qfc "%h/.local/bin/claude remote-control --name @HOSTNAME@ --permission-mode default --capacity 3 --settings /etc/claude-remote-settings.json" /dev/null
+Restart=always
+RestartSec=20
+
+[Install]
+WantedBy=default.target

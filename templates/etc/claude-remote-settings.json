@@ -1,0 +1,1 @@
+{"permissions":{"deny":["Read(~/.claude-profiles/work/**)","Read(~/.config/gh/**)","Read(~/.databricks/**)","Read(~/.databrickscfg)","Read(~/.ssh/**)","Read(~/maint/app/state.json)","Edit(~/maint/app/**)","Write(~/maint/app/**)","Edit(~/.claude-profiles/**)","Write(~/.claude-profiles/**)"]}}

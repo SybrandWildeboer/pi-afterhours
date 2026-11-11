@@ -1,0 +1,2 @@
+# dashboard kiosk on the touchscreen (see ~/maint/app/kiosk.sh)
+@HOME@/maint/app/kiosk.sh >/dev/null 2>&1 &

@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+	<touch deviceName="@TOUCH_DEVICE@" mapToOutput="@TOUCH_OUTPUT@" mouseEmulation="yes"/>
+</openbox_config>

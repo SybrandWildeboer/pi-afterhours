@@ -1,0 +1,9 @@
+# pi-afterhours loop schedule, installed by install.sh. These entries are DRY-RUN: they read and report, but never
+# post, merge, push or open PRs. To go live, after reading docs/05-maintenance-loop.md: ./install.sh --go-live
+PATH=@HOME@/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Slack: listen for requests (spec / scan now) every 30 min, 07:00-21:30
+*/30 7-21 * * * cd @HOME@/maint/app && python3 run.py gate >> @HOME@/maint/run.log 2>&1
+# Repos: PRs, failing CI, audits. Hourly on weekdays 08:05-18:05
+5 8-18 * * 1-5 cd @HOME@/maint/app && python3 run.py full >> @HOME@/maint/run.log 2>&1
+# Databricks health check: once on weekday mornings
+10 7 * * 1-5 cd @HOME@/maint/app && python3 run.py dbx >> @HOME@/maint/run.log 2>&1

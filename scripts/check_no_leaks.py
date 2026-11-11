@@ -19,6 +19,7 @@ EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za
 IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 IDS = re.compile(r"\bC0[A-Z0-9]{8,}\b|\bdbc-[0-9a-f]{8}-[0-9a-f]{4}|\benv_01[A-Za-z0-9]{20,}\b")
 OK_EMAIL_DOMAINS = {"users.noreply.github.com", "example.com", "example.org", "example.net"}
+UNIT_SUFFIXES = (".service", ".socket", ".target", ".mount", ".timer", ".slice")  # getty@tty1.service is not an email
 OK_IPS = {"127.0.0.1", "0.0.0.0", "255.255.255.255"}
 OK_IP_PREFIXES = ("192.0.2.", "198.51.100.", "203.0.113.")  # documentation ranges
 SKIP_DIRS = {".git", ".superpowers", "__pycache__", "node_modules"}
@@ -36,7 +37,8 @@ def scan_text(text, terms):
     """Return (kind, match) for everything in `text` that looks private or secret."""
     out = [("token", m.group(0)) for m in TOKEN.finditer(text)]
     for m in EMAIL.finditer(text):
-        if m.group(1).lower() not in OK_EMAIL_DOMAINS and m.group(0) != "git@github.com":
+        domain = m.group(1).lower()
+        if domain not in OK_EMAIL_DOMAINS and not domain.endswith(UNIT_SUFFIXES) and m.group(0) != "git@github.com":
             out.append(("email", m.group(0)))
     for m in IPV4.finditer(text):
         ip = m.group(0)

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# List background Claude sessions for every profile.
+for d in "$HOME"/.claude-profiles/*/; do
+  [ -d "$d" ] || continue
+  echo "== $(basename "$d") =="; CLAUDE_CONFIG_DIR="$d" claude agents --json 2>&1 | head -40
+done

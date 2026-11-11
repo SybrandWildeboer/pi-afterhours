@@ -27,6 +27,9 @@ class ScanText(unittest.TestCase):
         self.assertIn("email", kinds(J(["a", "@", "b.nl"])))
         self.assertEqual(kinds("1+octo@users.noreply.github.com, me@example.com, git@github.com:x/y.git"), set())
 
+    def test_systemd_unit_names_are_not_emails(self):
+        self.assertEqual(kinds("After=getty@tty1.service and user@1000.service and sshd@.socket"), set())
+
     def test_ip(self):
         self.assertIn("ip", kinds(J(["192.168.", "178.143"])))
         self.assertEqual(kinds("127.0.0.1 0.0.0.0 192.0.2.7 198.51.100.4 203.0.113.9"), set())

@@ -1,0 +1,1 @@
+{"permissions":{"deny":["Read(~/.claude-profiles/personal/**)","Read(~/.ssh/**)","Edit(~/maint/app/**)","Write(~/maint/app/**)","Edit(~/.claude-profiles/**)","Write(~/.claude-profiles/**)"]}}

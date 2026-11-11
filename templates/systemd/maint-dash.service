@@ -1,0 +1,8 @@
+[Unit]
+Description=Maintenance dashboard for the touchscreen (localhost only)
+[Service]
+ExecStart=/usr/bin/python3 %h/maint/app/dash.py
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=default.target
