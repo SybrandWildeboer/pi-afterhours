@@ -51,7 +51,10 @@ put() {
   local src="$1" dest="$2" mode="${3:-644}" real; real="$(P "$dest")"
   if [ -f "$real" ] && cmp -s "$src" "$real"; then return 0; fi
   local elevate=()
-  case "$dest" in /etc/*) [ -n "$SUDO" ] && elevate=("$SUDO") ;; esac
+  case "$dest" in
+    /etc/*) confirm "Write $dest (needs root)?" || { echo "  skipped $dest"; return 0; }
+            [ -n "$SUDO" ] && elevate=("$SUDO") ;;
+  esac
   act "write $dest" "${elevate[@]}" bash -c 'mkdir -p "$(dirname "$2")" && install -m "$3" "$1" "$2"' _ "$src" "$real" "$mode"
 }
 read_cron() { if [ -n "$ROOT" ]; then cat "$CRON_FILE" 2>/dev/null || true; else crontab -l 2>/dev/null || true; fi; }
@@ -105,7 +108,7 @@ act "create $PROJECTS and the loop's work folder" mkdir -p "$(P "$PROJECTS")" "$
 
 phase app
 act "copy the loop and dashboard to $HOME_DIR/maint/app (config.json, state and logs are never touched)" bash -c \
-  'mkdir -p "$2" && tar -C "$1" --exclude=config.json --exclude="state.json*" --exclude="ledger*.csv" --exclude=events.jsonl --exclude=__pycache__ -cf - . | tar -C "$2" -xf - && chmod +x "$2/run.py" "$2/dash.py" "$2/push-maint" "$2/kiosk.sh"' \
+  'mkdir -p "$2" && tar -C "$1" --exclude=config.json --exclude="state.json*" --exclude="ledger*.csv" --exclude=events.jsonl --exclude=__pycache__ -cf - . | tar -C "$2" -xf - && chmod +x "$2/run.py" "$2/dash.py" "$2/push-maint" "$2/maint-commit" "$2/maint-pr" "$2/kiosk.sh"' \
   _ "$REPO/app" "$(P "$HOME_DIR/maint/app")"
 echo "  next: copy app/config.example.json to config.json and edit it (docs/05-maintenance-loop.md)"
 

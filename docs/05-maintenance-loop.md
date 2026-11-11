@@ -20,7 +20,7 @@ Times are the Pi's local time. Edit your crontab to change them; the installer o
 2. Run `python3 run.py full` by hand and read the output. The installed cron entries are also dry-run.
 3. When you are happy: `./install.sh --go-live`. It requires `config.json`, refuses if `auto_merge` is on, and switches the cron entries to `--live`.
 
-Going live means the loop **posts to Slack and may open pull requests** from the fix agent. It never merges.
+Going live means the loop **posts to Slack and may open pull requests** from the fix agent. It never merges while `auto_merge` is `false` (the default).
 
 Slack is optional: with `"channel": ""` there is no gate, no posts and no idle rule; the loop only prints.
 
@@ -32,7 +32,7 @@ The first step of every `full` run is to read the last bot post in the channel. 
 
 - One fix attempt per failing workflow, and per repository and workflow, every 72 hours.
 - `max_fix_per_run` 1, `max_new_prs_per_repo_day` 3, `max_diff_lines` 400.
-- `protected_paths` (deploy, infra, workflows, secrets, prod) are not touched by a fix.
+- `protected_paths` (deploy, infra, workflows, secrets, prod) are enforced by the merge rule for bot PRs, not by the fix agent: a fix may edit those files and open a PR, which you then review. Do not rely on it as a wall.
 - All of these are in `config.json`; defaults are in `app/config.py`.
 
 ## Small agents
@@ -45,9 +45,9 @@ Each task is a separate `claude -p` call with a fixed model, a spending cap (`--
 | post | haiku | $0.05 | send one Slack message |
 | spec | sonnet | $0.60 | read your projects, no writes |
 | review | sonnet | $0.40 | `gh pr view/diff/checks` only |
-| fix | sonnet | $1.50 | edit a scratch worktree, `git`, `push-maint`, `gh pr create` |
+| fix | sonnet | $1.50 | edit a scratch worktree, `git status`/`git diff`, and the wrappers `maint-commit`, `push-maint`, `maint-pr` |
 
-The fix agent works in a worktree the code creates under `~/maint/work`, and can push only through `push-maint`. See [security](07-security-model.md) for what that does and does not guarantee.
+The fix agent works in a worktree the code creates under `~/maint/work`, and can commit, push and open a PR only through the three wrapper scripts, which take fixed arguments on a `maint/<name>` branch. See [security](07-security-model.md) for what that does and does not guarantee.
 
 ## Where to look
 

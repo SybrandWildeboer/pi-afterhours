@@ -12,7 +12,8 @@ Unattended AI agents, on a small always-on computer, holding: a GitHub token, on
 - **`auto_merge` is off**, and `--go-live` refuses if you turn it on. Fixes are pull requests.
 - **One small agent per task**, each with a model, a spending cap (`--max-budget-usd`), an explicit tool allowlist and a deny list for credential paths. The review agent can only see PR diffs; the gate agent can only read Slack.
 - **Slack text is data.** The gate agent classifies and returns JSON; the code, not the model, decides what happens next.
-- **A narrow push path.** The fix agent may not run `git push`. It may run `push-maint`, which pushes only the current `maint/<name>` branch. The worktree is created by code, not by the model.
+- **Narrow write paths.** The fix agent may not run `git commit`, `git push` or `gh pr create` directly (those accept file arguments such as `-F` or `--body-file` that could copy a token into a commit or PR). It runs `maint-commit`, `push-maint` and `maint-pr`: wrapper scripts with fixed arguments that work only on a `maint/<name>` branch, take the message and body as literal text, and never run repository hooks. The worktree is created by code, not by the model.
+- **The permission mode is forced** to `default` on every agent call, so a `bypassPermissions` default in the profile's own settings is not inherited. The profile's allow rules and hooks (`--setting-sources user`) still load: keep the loop profile's `settings.json` free of broad `Bash(*)` allows.
 - **Settings are scoped** with `--setting-sources user`, so a repository's own `.claude/settings.json` cannot widen the agents' permissions, and only the Slack agents get any connectors (`--strict-mcp-config` for the rest).
 - **The dashboard binds to localhost** only.
 - **Remote Control asks before acting** (`--permission-mode default`).

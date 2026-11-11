@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# The ONLY way the fix agent may commit: stage everything in the worktree and commit with the given message.
+# The message is one literal argument, so options like -F or --amend cannot be smuggled in, and repo hooks never run
+# (a hook is a file the agent could have written).
+set -euo pipefail
+msg="${1:-}"
+[ -n "$msg" ] && [ "$#" = 1 ] || { echo "usage: maint-commit \"<message>\"" >&2; exit 2; }
+b="$(git rev-parse --abbrev-ref HEAD)"
+[[ "$b" =~ ^maint/[A-Za-z0-9._-]+$ && "$b" != *..* ]] || { echo "refusing: current branch is not maint/<name>" >&2; exit 2; }
+git add -A
+exec git -c core.hooksPath=/dev/null commit --no-verify -m "$msg"

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# The ONLY way the fix agent may open a pull request: fixed flags, current maint/<name> branch, title and body as literal text.
+# (No --body-file, so it cannot read a file such as a token into a PR.)
+set -euo pipefail
+[ "$#" = 2 ] && [ -n "$1" ] || { echo "usage: maint-pr \"<title>\" \"<body>\"" >&2; exit 2; }
+b="$(git rev-parse --abbrev-ref HEAD)"
+[[ "$b" =~ ^maint/[A-Za-z0-9._-]+$ && "$b" != *..* ]] || { echo "refusing: current branch is not maint/<name>" >&2; exit 2; }
+exec gh pr create --label maint-bot --base main --head "$b" --title "$1" --body "$2"

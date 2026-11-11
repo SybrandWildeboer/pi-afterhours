@@ -6,6 +6,7 @@ READ report.txt before you send it to anyone: it removes the names, addresses, e
 (your username, hostname, Wi-Fi name, IPs, MACs, emails, tokens), but you are the final check.
 """
 import getpass
+import json
 import re
 import socket
 import sys
@@ -25,6 +26,17 @@ KEEP_IPS = {"127.0.0.1", "0.0.0.0"}  # useful and harmless
 SERVICES = ("maint-dash", "claude-remote", "claude-remote-work")
 
 
+SSID_LINE = re.compile(r"(?m)^(\s*SSID:\s*).+$")
+
+
+def names_from_config(cfg):
+    """Words from the loop's config.json that would identify the owner's repos, org, channel or GitHub login."""
+    out = [cfg.get("me"), cfg.get("channel"), cfg.get("projects_root"), *cfg.get("workspaces", [])]
+    for r in cfg.get("repos", []):
+        out += [r.get("name"), r.get("path"), r.get("gh"), *r.get("gh", "").split("/"), *r.get("path", "").split("/")]
+    return sorted({t.strip() for t in out if t and len(t.strip()) >= 3}, key=len, reverse=True)
+
+
 def _word(text, word, placeholder):
     """Replace a whole word, but never inside an earlier placeholder like <user>, so redacting twice changes nothing."""
     if len(word) < 2:
@@ -35,6 +47,7 @@ def _word(text, word, placeholder):
 def redact(text, extra=(), ssids=(), user=None, host=None):
     user = getpass.getuser() if user is None else user
     host = socket.gethostname() if host is None else host
+    text = SSID_LINE.sub(r"\1<ssid>", text)
     text = TOKEN.sub("<token>", text)
     text = EMAIL.sub(lambda m: m.group(0) if m.group(1).lower().endswith(UNIT_SUFFIXES) else "<email>", text)
     text = MAC.sub("<mac>", text)
@@ -63,7 +76,11 @@ def collect(run=run_cmd):
     out = [f"pi-afterhours diagnostics, generated {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC"]
     for title, parts in sections:
         out += ["", f"== {title} ==", *[p.rstrip() for p in parts if p.strip()]]
-    return redact("\n".join(out) + "\n", ssids=ssids)
+    try:
+        names = names_from_config(json.loads((Path.home() / "maint" / "app" / "config.json").read_text()))
+    except (OSError, ValueError, AttributeError):
+        names = []
+    return redact("\n".join(out) + "\n", extra=names, ssids=ssids)
 
 
 if __name__ == "__main__":

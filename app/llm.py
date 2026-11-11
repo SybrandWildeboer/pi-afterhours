@@ -12,6 +12,8 @@ from util import extract_json, fill, sh
 HOME = str(Path.home())
 SLACK = "mcp__claude_ai_Slack__"
 PUSH = f"{HOME}/maint/app/push-maint"  # the only way to push: see push-maint
+COMMIT = f"{HOME}/maint/app/maint-commit"  # the only way to commit
+PR = f"{HOME}/maint/app/maint-pr"  # the only way to open a PR
 
 # Never readable or writable by any agent, whatever the allowlist says.
 DENY = ["Read(~/.ssh/**)", "Read(~/.claude-profiles/**)", "Read(~/.claude/**)", "Read(~/.databricks/**)",
@@ -24,8 +26,10 @@ TOOLS = {
     "spec": ["Read(~/projects/**)", "Grep", "Glob", "Skill"],
     "review": ["Bash(gh pr view:*)", "Bash(gh pr diff:*)", "Bash(gh pr checks:*)"],  # no Read: it sees only the diff
     "fix": ["Read(~/maint/work/**)", "Edit(~/maint/work/**)", "Write(~/maint/work/**)", "Grep", "Glob", "Skill",
-            "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git add:*)", "Bash(git commit:*)",
-            f"Bash({PUSH}:*)", "Bash(gh run view:*)", "Bash(gh pr create:*)", "Bash(gh pr view:*)"],
+            # No prefix rules for git/gh commands that accept file arguments (-F, --output, --body-file): they could
+            # copy a token into a commit or PR. Commit, push and PR go through the wrapper scripts instead.
+            "Bash(git status)", "Bash(git diff)", f"Bash({COMMIT}:*)", f"Bash({PUSH}:*)", f"Bash({PR}:*)",
+            "Bash(gh run view:*)", "Bash(gh pr view:*)"],
 }
 
 
@@ -52,6 +56,7 @@ class Agents:
         known.update({p: True for p in plugins})
         cmd = ["claude", "-p", prompt, "--model", c["models"][task], "--output-format", "json",
                "--no-session-persistence", f"--max-budget-usd={c['budget_usd'][task]}",
+               "--permission-mode", "default",  # never inherit bypassPermissions from the profile's own settings
                "--setting-sources", "user",  # ignore any .claude/settings in the repo being worked on
                "--settings", json.dumps({"enabledPlugins": known})]
         if not slack:  # claude.ai connectors add ~5x tokens per call: only Slack agents get them
@@ -141,6 +146,7 @@ class Agents:
     def fix(self, repo, wf, branch, worktree):
         """The caller (code) has already created `worktree` on `branch`; the agent works only inside it."""
         p = self._prompt("fix", repo=repo["name"], gh=repo["gh"], workflow=wf["workflowName"], branch=branch,
-                         base="main", sha=wf["headSha"][:10], url=wf["url"], push=PUSH)
+                         base="main", sha=wf["headSha"][:10], url=wf["url"], push=PUSH,
+                         commit=COMMIT, pr=PR)
         return self._json("fix", p, plugins=self.plugins_for("fix"), cwd=worktree,
                           label=f"Fixing {repo['name']}: {wf['workflowName']}")

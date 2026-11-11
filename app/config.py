@@ -43,6 +43,10 @@ def load(path):
         raise ConfigError(f"{path} not found: copy config.example.json to config.json and edit it") from None
     except ValueError as e:
         raise ConfigError(f"{path} is not valid JSON: {e}") from None
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{path}: the top level must be a JSON object")
+    if not isinstance(raw.get("auto_merge", False), bool):
+        raise ConfigError("config.json: 'auto_merge' must be true or false (not a string)")
     cfg = _merge(DEFAULTS, raw)
     if not cfg["projects_root"]:
         raise ConfigError("config.json: 'projects_root' is required (the folder that holds your repo checkouts)")

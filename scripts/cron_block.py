@@ -24,10 +24,12 @@ def _without_block(text):
 
 def replace_block(current, block):
     """The crontab with exactly one fresh copy of `block` at the end (so its PATH= line cannot affect other entries)."""
+    was_live = BEGIN in current and "--live" in current[current.index(BEGIN):]  # a re-run must not undo --go-live
     rest = _without_block(current)
     while rest and not rest[-1].strip():
         rest.pop()
-    return "\n".join(rest + ([""] if rest else []) + block.rstrip("\n").splitlines()) + "\n"
+    out = "\n".join(rest + ([""] if rest else []) + block.rstrip("\n").splitlines()) + "\n"
+    return go_live(out) if was_live else out
 
 
 def go_live(text):
