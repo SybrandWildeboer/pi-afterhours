@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# The ONLY way the fix agent may push: the current maint/<name> branch to origin, nothing else.
+# The agent is allowed to run this script but not `git push`, so refspecs like maint/x:main cannot get through.
+set -euo pipefail
+b="${1:-}"
+[[ "$b" =~ ^maint/[A-Za-z0-9._-]+$ && "$b" != *..* ]] || { echo "refusing: branch must be maint/<name>" >&2; exit 2; }
+[[ "$(git rev-parse --abbrev-ref HEAD)" == "$b" ]] || { echo "refusing: current branch is not $b" >&2; exit 2; }
+exec git push -u origin "refs/heads/$b:refs/heads/$b"

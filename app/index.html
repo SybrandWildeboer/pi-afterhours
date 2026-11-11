@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Pi dashboard</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19; --text: #f0efec; --text2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10);
+    --work: #3987e5; --personal: #d95926;                    /* categorical slots 1 and 2, validated on this surface */
+    --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--plane); color: var(--text); overflow: hidden; cursor: none;
+    font: 22px/1.25 system-ui, -apple-system, "Segoe UI", sans-serif; user-select: none; }
+  .app { height: 100dvh; display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; }
+  .label { color: var(--muted); font-size: 17px; letter-spacing: .02em; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .clock { font-size: 54px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
+  .date { color: var(--text2); font-size: 19px; margin-top: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: flex-end; font-size: 18px; color: var(--text2); }
+  .ok::before { content: "✓ "; color: var(--good); } .bad::before { content: "✕ "; color: var(--critical); }
+  .warn::before { content: "▲ "; color: var(--warning); } .none::before { content: "– "; color: var(--muted); }
+  .now .row { display: grid; grid-template-columns: 14px 1fr auto; gap: 4px 12px; align-items: center; padding: 6px 0; }
+  .now .row + .row { border-top: 1px solid var(--grid); }
+  .dot { width: 12px; height: 12px; border-radius: 50%; grid-row: 1 / span 2; align-self: start; margin-top: 7px; }
+  .req { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step { color: var(--text2); font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; grid-column: 2; }
+  .since { color: var(--muted); font-size: 18px; font-variant-numeric: tabular-nums; grid-row: 1; grid-column: 3; }
+  .idle { color: var(--muted); padding: 6px 0; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tile .value { font-size: 50px; font-weight: 600; line-height: 1.05; margin-top: 2px; }
+  .tile .sub { color: var(--text2); font-size: 17px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .profiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .profile h3 { font-size: 22px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+  .profile .state { margin-left: auto; font-size: 17px; font-weight: 400; color: var(--text2); }
+  .profile .kv { display: flex; justify-content: space-between; font-size: 19px; color: var(--text2); margin-top: 3px; }
+  .profile .kv b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .chart-head { display: flex; align-items: center; gap: 16px; }
+  .legend { display: flex; gap: 14px; font-size: 18px; color: var(--text2); margin-left: auto; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  button.tog { background: none; border: 1px solid var(--axis); color: var(--text2); border-radius: 10px; font: inherit; font-size: 17px;
+    min-height: 44px; min-width: 76px; }
+  svg { width: 100%; height: auto; display: block; margin-top: 4px; }
+  .readout { color: var(--text2); font-size: 18px; min-height: 24px; font-variant-numeric: tabular-nums; }
+  table.hours { width: 100%; border-collapse: collapse; font-size: 17px; font-variant-numeric: tabular-nums; }
+  table.hours td, table.hours th { text-align: right; padding: 2px 6px; border-bottom: 1px solid var(--grid); color: var(--text2); }
+  table.hours td:first-child, table.hours th:first-child { text-align: left; }
+  .events { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 6px; }
+  .events .list { flex: 1; overflow-y: auto; margin-top: 6px; }
+  .ev { display: grid; grid-template-columns: 96px 86px 1fr; gap: 10px; align-items: center; min-height: 48px; border-top: 1px solid var(--grid);
+    font-size: 20px; }
+  .ev .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 18px; }
+  .ev .who { color: var(--text2); font-size: 17px; display: flex; align-items: center; gap: 6px; }
+  .ev .what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev.fail .what::before { content: "✕ "; color: var(--critical); }
+  #offline { display: none; color: var(--warning); text-align: center; font-size: 18px; }
+  @media (orientation: landscape) {
+    .app { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto auto 1fr; gap: 10px 14px; padding: 10px 14px; }
+    header { grid-column: 1 / -1; } .clock { font-size: 40px; }
+    .events { grid-column: 2; grid-row: 2 / span 3; } .tile .value { font-size: 36px; }
+    .chart { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div><div class="clock" id="clock">--:--</div><div class="date" id="date"></div></div>
+    <div class="chips" id="chips"></div>
+  </header>
+  <div id="offline">⚠ no data from the Pi, retrying…</div>
+
+  <section class="card now"><div class="label">WORKING ON NOW</div><div id="now"></div></section>
+
+  <section class="tiles">
+    <div class="card tile"><div class="label">COST TODAY (est.)</div><div class="value" id="k-cost">–</div><div class="sub" id="k-cost-sub"></div></div>
+    <div class="card tile"><div class="label">TOKENS TODAY</div><div class="value" id="k-tok">–</div><div class="sub" id="k-tok-sub"></div></div>
+    <div class="card tile"><div class="label">AGENT STEPS TODAY</div><div class="value" id="k-turns">–</div><div class="sub" id="k-turns-sub"></div></div>
+    <div class="card tile"><div class="label">PI</div><div class="value" id="k-pi">–</div><div class="sub" id="k-pi-sub"></div></div>
+  </section>
+
+  <section class="profiles" id="profiles"></section>
+
+  <section class="card chart">
+    <div class="chart-head"><div class="label">COST PER HOUR, LAST 24H</div>
+      <div class="legend"><span><i class="sw" style="background:var(--work)"></i>work</span><span><i class="sw" style="background:var(--personal)"></i>personal</span></div>
+      <button class="tog" id="tog">Table</button></div>
+    <div id="plot"></div><div class="readout" id="readout"></div>
+  </section>
+
+  <section class="card events"><div class="label">EVENTS</div><div class="list" id="events"></div></section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+const COLOR = { work: "var(--work)", personal: "var(--personal)", loop: "var(--work)" };
+const fmtTok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(Math.round(n));
+const fmtUsd = v => "$" + (v < 0.1 ? v.toFixed(3) : v.toFixed(2));
+const hhmm = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+const hhmmss = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const ago = ts => { const s = Math.max(0, Date.now() / 1000 - ts); return s < 90 ? Math.round(s) + "s" : s < 5400 ? Math.round(s / 60) + "m" : Math.round(s / 3600) + "h"; };
+let S = null, tableView = false, fails = 0;
+
+function chip(text, cls) { const c = el("span", cls, text); return c; }
+
+function render(s) {
+  S = s;
+  const t = s.total, p = s.profiles, sys = s.system;
+  const chips = $("chips"); chips.replaceChildren(
+    chip(s.remote === "active" ? "Remote on" : "Remote " + s.remote, s.remote === "active" ? "ok" : "bad"),
+    s.last_run ? chip(s.last_run.text.replace(" run ", " ") + " · " + hhmm(s.last_run.ts), s.last_run.ok ? "ok" : "bad") : chip("no loop runs yet", "none"),
+    chip(Math.round(sys.temp) + "°C · mem " + sys.mem_pct + "%", sys.temp >= 70 ? "warn" : "ok"));
+
+  const now = $("now"); now.replaceChildren();
+  if (!s.now_working.length) now.append(el("div", "idle", "Idle. Next check on the schedule."));
+  for (const w of s.now_working.slice(0, 3)) {
+    const r = el("div", "row"), d = el("span", "dot"); d.style.background = COLOR[w.src];
+    const since = el("span", "since"); since.dataset.since = w.since;
+    r.append(d, el("div", "req", (w.src === "loop" ? "loop · " : w.src + " · ") + w.text), since, el("div", "step", w.step));
+    now.append(r);
+  }
+  tick();
+
+  $("k-cost").textContent = fmtUsd(t.usd);
+  $("k-cost-sub").textContent = `work ${fmtUsd(p.work.usd)} · personal ${fmtUsd(p.personal.usd)}`;
+  $("k-tok").textContent = fmtTok(t.in + t.cached + t.out);
+  $("k-tok-sub").textContent = `${fmtTok(t.in)} new · ${fmtTok(t.cached)} cached · ${fmtTok(t.out)} out`;
+  $("k-turns").textContent = t.turns;
+  $("k-turns-sub").textContent = `${t.calls} loop calls · ${t.tools} session tool calls`;
+  $("k-pi").textContent = sys.temp.toFixed(0) + "°C";
+  $("k-pi-sub").textContent = `load ${sys.load.toFixed(1)} · disk ${sys.disk_pct}% · up ${sys.uptime_h}h`;
+
+  const box = $("profiles"); box.replaceChildren();
+  for (const name of ["work", "personal"]) {
+    const q = p[name], card = el("div", "card profile"), h = el("h3");
+    const sw = el("i", "sw"); sw.style.background = COLOR[name];
+    h.append(sw, el("span", "", name), el("span", "state", q.active ? "● working" : q.last ? "idle · " + ago(q.last) + " ago" : "no activity"));
+    const kv = (k, v) => { const r = el("div", "kv"); r.append(el("span", "", k), el("b", "", v)); return r; };
+    card.append(h, kv("steps", q.turns), kv("tokens", fmtTok(q.in + q.cached + q.out)), kv("cost", fmtUsd(q.usd)), kv("sessions", q.sessions));
+    box.append(card);
+  }
+  drawChart(s.hourly);
+
+  const list = $("events"), top = list.scrollTop; list.replaceChildren();
+  for (const e of s.events) {
+    const r = el("div", "ev" + (e.ok ? "" : " fail")), who = el("span", "who"), d = el("i", "sw");
+    d.style.background = COLOR[e.src]; d.style.width = d.style.height = "10px";
+    who.append(d, el("span", "", e.src));
+    r.append(el("span", "t", hhmmss(e.ts)), who, el("span", "what", e.text)); list.append(r);
+  }
+  if (!s.events.length) list.append(el("div", "idle", "No events yet."));
+  list.scrollTop = top;
+}
+
+function drawChart(rows) {
+  const W = 672, H = 164, L = 50, B = 22, T = 26, pw = W - L, ph = H - B - T, n = rows.length, slot = pw / n, bw = 14;
+  const max = Math.max(0.01, ...rows.map(r => r.work + r.personal));
+  const y = v => T + ph - (v / max) * ph, plot = $("plot");
+  if (tableView) {
+    const tb = el("table", "hours"), head = el("tr"); for (const h of ["hour", "work", "personal"]) head.append(el("th", "", h)); tb.append(head);
+    for (const r of rows.slice().reverse().filter(r => r.work + r.personal > 0).slice(0, 8)) {
+      const tr = el("tr"); tr.append(el("td", "", r.t.slice(11, 13) + ":00"), el("td", "", fmtUsd(r.work)), el("td", "", fmtUsd(r.personal))); tb.append(tr);
+    }
+    plot.replaceChildren(tb); $("tog").textContent = "Chart"; return;
+  }
+  $("tog").textContent = "Table";
+  let g = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Cost per hour in the last 24 hours, work and personal">`;
+  for (const f of [0, .5, 1]) {
+    g += `<line x1="${L}" x2="${W}" y1="${y(max * f)}" y2="${y(max * f)}" stroke="${f ? "var(--grid)" : "var(--axis)"}" stroke-width="1"/>`;
+    g += `<text x="${L - 6}" y="${y(max * f) + 5}" text-anchor="end" fill="var(--muted)" font-size="14">${f ? "$" + (max * f).toFixed(max < 0.1 ? 3 : 2) : "0"}</text>`;
+  }
+  let peak = 0;
+  rows.forEach((r, i) => {
+    const x = L + i * slot + (slot - bw) / 2, tot = r.work + r.personal; if (tot > rows[peak].work + rows[peak].personal) peak = i;
+    const hw = (r.work / max) * ph, hp = (r.personal / max) * ph;
+    if (hw > 0) g += `<path d="M${x},${T + ph} v${-Math.max(hw, 2)} h${bw} v${Math.max(hw, 2)} z" fill="var(--work)"/>`;
+    if (hp > 0) g += `<path d="M${x},${T + ph - hw - (hw > 0 ? 2 : 0)} v${-Math.max(hp, 2)} q0,-4 4,-4 h${bw - 8} q4,0 4,4 v${Math.max(hp, 2)} z" fill="var(--personal)"/>`;
+    g += `<rect data-i="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${ph}" fill="transparent"/>`;
+    if (i % 6 === 0) g += `<text x="${x + bw / 2}" y="${H - 4}" text-anchor="middle" fill="var(--muted)" font-size="14">${r.t.slice(11, 13)}h</text>`;
+  });
+  const pk = rows[peak], pt = pk.work + pk.personal;
+  if (pt > 0) g += `<text x="${Math.min(W - 4, L + peak * slot + slot / 2)}" y="${T - 8}" text-anchor="${peak > n * 0.7 ? "end" : "middle"}" fill="var(--text)" font-size="15">${fmtUsd(pt)}</text>`;
+  plot.innerHTML = g + "</svg>";                                          // numbers and fixed strings only, never data text
+  plot.querySelectorAll("rect[data-i]").forEach(r => r.addEventListener("click", () => {
+    const q = rows[+r.dataset.i]; $("readout").textContent = `${q.t.slice(11, 13)}:00 · work ${fmtUsd(q.work)} · personal ${fmtUsd(q.personal)}`;
+  }));
+}
+
+function tick() {
+  const d = new Date();
+  $("clock").textContent = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  $("date").textContent = d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  document.querySelectorAll("[data-since]").forEach(e => e.textContent = ago(+e.dataset.since));
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" }); render(await r.json()); fails = 0; $("offline").style.display = "none";
+  } catch (e) { if (++fails >= 2) $("offline").style.display = "block"; }
+}
+$("tog").addEventListener("click", () => { tableView = !tableView; if (S) drawChart(S.hourly); });
+poll(); setInterval(poll, 3000); setInterval(tick, 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "projects_root": "/home/<you>/projects",
+  "profile": "work",
+  "me": "your-github-login",
+  "channel": "",
+  "auto_merge": false,
+  "repos": [
+    {"name": "example", "path": "example", "gh": "your-github-login/example"}
+  ],
+  "workspaces": [],
+  "plugins": {"off": [], "spec": [], "fix": []}
+}
