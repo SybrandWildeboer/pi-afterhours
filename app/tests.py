@@ -9,7 +9,7 @@ import fmt
 import rules as R
 from util import extract_json, fill
 
-CFG = {"max_diff_lines": 400, "protected_paths": ["deploy", "infra", "workflows", "secrets", "prod"]}
+CFG = {"channel": "test-channel", "max_diff_lines": 400, "protected_paths": ["deploy", "infra", "workflows", "secrets", "prod"]}
 NOW = datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc)
 GREEN = [{"conclusion": "SUCCESS"}, {"state": "SUCCESS"}]
 

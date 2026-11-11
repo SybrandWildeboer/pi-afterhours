@@ -20,6 +20,11 @@ CHUNK = 3400
 TAIL = "no further action"  # last line of a post that leaves nothing in progress: the next run stops when it sees it
 
 
+def slack_enabled(cfg):
+    """An empty channel means Slack is off: no gate, no posts, no idle rule; reports go to stdout."""
+    return bool(cfg.get("channel"))
+
+
 class Ctx:
     def __init__(self, cfg, state, live, agents, now):
         self.cfg, self.S, self.live, self.ag, self.now = cfg, state, live, agents, now
@@ -38,6 +43,9 @@ class Ctx:
             text += "\n" + line
         if tail:  # always the very last line, after the cost footer
             text += "\n" + tail
+        if not slack_enabled(self.cfg):
+            print(f"[slack off] {text}\n")
+            return
         if self.live:
             self.ag.post(text, thread_ts)
         else:
@@ -84,6 +92,8 @@ def sweep_due(ctx):
 
 def gate(ctx):
     """Read new messages from the user. Returns scan targets; answers spec requests directly."""
+    if not slack_enabled(ctx.cfg):
+        return []
     S, now = ctx.S, ctx.now.timestamp()
     if ctx.live and not S["last_ts"]:  # first live run: start from now, never replay history
         S["last_ts"] = str(now)
