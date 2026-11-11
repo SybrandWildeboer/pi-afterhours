@@ -5,8 +5,23 @@
   "channel": "",
   "auto_merge": false,
   "repos": [
-    {"name": "example", "path": "example", "gh": "your-github-login/example"}
+    {
+      "name": "example",
+      "path": "example",
+      "gh": "your-github-login/example"
+    }
   ],
   "workspaces": [],
-  "plugins": {"off": [], "spec": [], "fix": []}
+  "plugins": {
+    "off": [
+      "superpowers@anthropic-plugin-directory",
+      "ponytail@ponytail"
+    ],
+    "spec": [
+      "superpowers@anthropic-plugin-directory"
+    ],
+    "fix": [
+      "ponytail@ponytail"
+    ]
+  }
 }

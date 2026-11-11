@@ -4,5 +4,5 @@ set -u
 cd "$(dirname "$0")/.."
 rc=0
 [ -f app/tests.py ] && { python3 app/tests.py || rc=1; }
-compgen -G "tests/test_*.py" >/dev/null && { python3 -m unittest discover -s tests -v || rc=1; }
+compgen -G "tests/test_*.py" >/dev/null && { python3 -m unittest discover -s tests || rc=1; }
 exit $rc

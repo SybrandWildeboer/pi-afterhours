@@ -11,10 +11,6 @@ from util import extract_json, fill, sh
 
 HOME = str(Path.home())
 SLACK = "mcp__claude_ai_Slack__"
-SUPERPOWERS = "superpowers@anthropic-plugin-directory"
-PONYTAIL = "ponytail@ponytail"
-# Everything installed in the profile. Anything not passed in `plugins=` is switched OFF for that call.
-ALL_PLUGINS = [PONYTAIL, SUPERPOWERS, "databricks@databricks-agent-skills", "mattpocock-skills@synced"]
 PUSH = f"{HOME}/maint/app/push-maint"  # the only way to push: see push-maint
 
 # Never readable or writable by any agent, whatever the allowlist says.
@@ -44,20 +40,31 @@ class Agents:
     def _prompt(self, name, **kw):
         return fill((self.root / "agents" / f"{name}.md").read_text(), **kw)
 
-    def _run(self, task, prompt, plugins=(), cwd=None, label=None):
+    def plugins_for(self, task):
+        return list(self.cfg["plugins"].get(task, []))
+
+    def command(self, task, prompt, plugins=()):
+        """The exact claude argv for one agent call. Pure: nothing is run here."""
         c = self.cfg
-        label = label or task
         slack = task in ("gate", "post")
         skills = task in ("spec", "fix")
+        known = {p: False for p in c["plugins"]["off"]}  # listed as off unless this agent was given it
+        known.update({p: True for p in plugins})
         cmd = ["claude", "-p", prompt, "--model", c["models"][task], "--output-format", "json",
                "--no-session-persistence", f"--max-budget-usd={c['budget_usd'][task]}",
                "--setting-sources", "user",  # ignore any .claude/settings in the repo being worked on
-               "--settings", json.dumps({"enabledPlugins": {p: p in plugins for p in ALL_PLUGINS}})]
+               "--settings", json.dumps({"enabledPlugins": known})]
         if not slack:  # claude.ai connectors add ~5x tokens per call: only Slack agents get them
             cmd += ["--strict-mcp-config", '--mcp-config={"mcpServers":{}}']
         if not skills:
             cmd.append("--disable-slash-commands")
         cmd += ["--disallowedTools", *DENY, "--allowedTools", *TOOLS[task]]  # variadic flags: keep last
+        return cmd
+
+    def _run(self, task, prompt, plugins=(), cwd=None, label=None):
+        c = self.cfg
+        label = label or task
+        cmd = self.command(task, prompt, plugins)
         env = {**os.environ, "CLAUDE_CONFIG_DIR": f"{HOME}/.claude-profiles/{c['profile']}",
                "PATH": f"{HOME}/.local/bin:{os.environ['PATH']}"}
         eid = events.begin("agent", label)
@@ -124,7 +131,7 @@ class Agents:
         prior_block = (f"\nA previous version of this spec exists. Revise it using the new message above:\n"
                        f"{json.dumps(prior)}\n") if prior else ""
         p = self._prompt("spec", text=text, repos=names, prior=prior_block)
-        return self._json("spec", p, plugins=(SUPERPOWERS,), cwd=self.cfg["projects_root"],
+        return self._json("spec", p, plugins=self.plugins_for("spec"), cwd=self.cfg["projects_root"],
                           label=f"Writing a spec: {text[:70]}")
 
     def review(self, repo, number):
@@ -135,5 +142,5 @@ class Agents:
         """The caller (code) has already created `worktree` on `branch`; the agent works only inside it."""
         p = self._prompt("fix", repo=repo["name"], gh=repo["gh"], workflow=wf["workflowName"], branch=branch,
                          base="main", sha=wf["headSha"][:10], url=wf["url"], push=PUSH)
-        return self._json("fix", p, plugins=(PONYTAIL,), cwd=worktree,
+        return self._json("fix", p, plugins=self.plugins_for("fix"), cwd=worktree,
                           label=f"Fixing {repo['name']}: {wf['workflowName']}")
