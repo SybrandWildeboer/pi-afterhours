@@ -241,7 +241,8 @@ def build_state():
             prof["work"]["out"] += r["output"]
             prof["work"]["turns"] += r["turns"]
             prof["work"]["calls"] += 1
-    items += band_items(prefix)
+    band = band_items(prefix)
+    items += band
     for dt, p, usd in items:
         if dt.date().isoformat() == today and p in prof:
             prof[p]["usd"] += usd
@@ -264,10 +265,43 @@ def build_state():
     runs = [e for e in evs if e.get("kind") == "end" and e["text"].split(" run ")[0] in ("gate", "full", "dbx")]
     tot = {k: sum(prof[p][k] for p in prof) for k in ("in", "cached", "out", "turns", "usd", "tools", "calls")}
     return {"now": now_ts, "today": today, "total": tot, "profiles": prof, "now_working": live + active,
+            "has_cost": bool(ledger or band),  # False: show tokens only, cost as n/a
             "hourly": hourly(items, now), "events": ev_rows[:60], "system": system(), "remote": remote_state(),
             "last_run": ({"ts": runs[-1]["ts"], "ok": runs[-1].get("ok", True), "text": runs[-1]["text"]} if runs else None)}
 
 
+def demo_state(now):
+    """Synthetic but plausible state for screenshots and for trying the page. Nothing real is in it."""
+    t = now.timestamp()
+    start = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=23)
+    shape = [0, 0, 0, 0, 0, 0, .02, .05, .09, .06, .04, .03, .08, .12, .07, .05, .10, .14, .06, .02, 0, .03, .04, .02]
+    hourly_ = [{"t": (start + timedelta(hours=i)).isoformat(timespec="minutes"),
+                "work": round(v * .7, 3), "personal": round(v * .3, 3)} for i, v in enumerate(shape)]
+    ev = [(35, "work", "$ git diff --stat", True), (70, "personal", "Edit README.md", True),
+          (130, "loop", "Reading the last post and new requests · $0.010 · 6 turns", True),
+          (165, "work", "$ pytest -x tests/test_sync.py", True), (240, "loop", "example-api: 3 PRs · 0 red CI", True),
+          (300, "personal", "Request: Draft a README for the weekend project", True),
+          (360, "loop", "example-web: scan failed (timeout)", False), (420, "work", "Edit sync.py", True),
+          (500, "loop", "Writing a spec: dark mode for the settings page · $0.108 · 6 turns", True),
+          (640, "work", "Request: Fix the flaky nightly test in example-api", True),
+          (900, "loop", "example-docs: 0 PRs · 0 red CI", True), (1500, "loop", "full run done in 74s", True)]
+    prof = {"work": {"turns": 58, "in": 130000, "cached": 1650000, "out": 11000, "tools": 31, "sessions": 2,
+                     "last": t - 12, "usd": 0.31, "calls": 14, "active": True},
+            "personal": {"turns": 21, "in": 52000, "cached": 610000, "out": 6500, "tools": 12, "sessions": 1,
+                         "last": t - 30, "usd": 0.18, "calls": 0, "active": True}}
+    tot = {k: sum(prof[p][k] for p in prof) for k in ("in", "cached", "out", "turns", "usd", "tools", "calls")}
+    return {"now": t, "today": now.astimezone().date().isoformat(), "total": tot, "profiles": prof,
+            "now_working": [{"src": "work", "text": "Fix the flaky nightly test in example-api",
+                             "step": "$ pytest -x tests/test_sync.py", "since": t - 312},
+                            {"src": "personal", "text": "Draft a README for the weekend project",
+                             "step": "Edit README.md", "since": t - 47}],
+            "has_cost": True, "hourly": hourly_,
+            "events": [{"ts": t - age, "src": src, "text": text, "ok": ok} for age, src, text, ok in ev],
+            "system": {"temp": 51.0, "load": 0.4, "mem_pct": 38, "disk_pct": 12, "uptime_h": 26.5},
+            "remote": "active", "last_run": {"ts": t - 1500, "ok": True, "text": "full run done in 74s"}}
+
+
+DEMO = False  # set by --demo
 _cache = {"t": 0, "v": None}
 _lock = threading.Lock()
 
@@ -275,7 +309,8 @@ _lock = threading.Lock()
 def state():
     with _lock:  # one computation per 2 seconds, however many pages are open
         if time.time() - _cache["t"] > 2:
-            _cache["v"], _cache["t"] = json.dumps(build_state()).encode(), time.time()
+            snap = demo_state(datetime.now().astimezone()) if DEMO else build_state()
+            _cache["v"], _cache["t"] = json.dumps(snap).encode(), time.time()
         return _cache["v"]
 
 
@@ -298,4 +333,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    args = sys.argv[1:]
+    DEMO = "--demo" in args  # synthetic data, for screenshots and trying the page
+    port = int(args[args.index("--port") + 1]) if "--port" in args else PORT
+    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()

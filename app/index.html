@@ -102,6 +102,7 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const COLOR = { work: "var(--work)", personal: "var(--personal)", loop: "var(--work)" };
 const fmtTok = n => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(Math.round(n));
 const fmtUsd = v => "$" + (v < 0.1 ? v.toFixed(3) : v.toFixed(2));
+const usd = (s, v) => s.has_cost ? fmtUsd(v) : "n/a";   // no cost data (e.g. no ponytail): tokens only
 const hhmm = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 const hhmmss = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 const ago = ts => { const s = Math.max(0, Date.now() / 1000 - ts); return s < 90 ? Math.round(s) + "s" : s < 5400 ? Math.round(s / 60) + "m" : Math.round(s / 3600) + "h"; };
@@ -127,8 +128,8 @@ function render(s) {
   }
   tick();
 
-  $("k-cost").textContent = fmtUsd(t.usd);
-  $("k-cost-sub").textContent = `work ${fmtUsd(p.work.usd)} · personal ${fmtUsd(p.personal.usd)}`;
+  $("k-cost").textContent = usd(s, t.usd);
+  $("k-cost-sub").textContent = `work ${usd(s, p.work.usd)} · personal ${usd(s, p.personal.usd)}`;
   $("k-tok").textContent = fmtTok(t.in + t.cached + t.out);
   $("k-tok-sub").textContent = `${fmtTok(t.in)} new · ${fmtTok(t.cached)} cached · ${fmtTok(t.out)} out`;
   $("k-turns").textContent = t.turns;
@@ -142,7 +143,7 @@ function render(s) {
     const sw = el("i", "sw"); sw.style.background = COLOR[name];
     h.append(sw, el("span", "", name), el("span", "state", q.active ? "● working" : q.last ? "idle · " + ago(q.last) + " ago" : "no activity"));
     const kv = (k, v) => { const r = el("div", "kv"); r.append(el("span", "", k), el("b", "", v)); return r; };
-    card.append(h, kv("steps", q.turns), kv("tokens", fmtTok(q.in + q.cached + q.out)), kv("cost", fmtUsd(q.usd)), kv("sessions", q.sessions));
+    card.append(h, kv("steps", q.turns), kv("tokens", fmtTok(q.in + q.cached + q.out)), kv("cost", usd(s, q.usd)), kv("sessions", q.sessions));
     box.append(card);
   }
   drawChart(s.hourly);
