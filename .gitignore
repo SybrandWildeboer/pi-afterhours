@@ -1,0 +1,12 @@
+# local, private or generated: never commit
+app/config.json
+app/state.json*
+app/ledger*.csv
+app/events.jsonl
+app/.lock
+.leakcheck-terms
+__pycache__/
+*.log
+
+# working design and plan: they hold private details (addresses, usernames, local paths), so they stay local
+docs/superpowers/
