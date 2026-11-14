@@ -51,7 +51,7 @@
   table.hours td, table.hours th { text-align: right; padding: 2px 6px; border-bottom: 1px solid var(--grid); color: var(--text2); }
   table.hours td:first-child, table.hours th:first-child { text-align: left; }
   .events { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-bottom: 6px; }
-  .events .list { flex: 1; overflow-y: auto; margin-top: 6px; }
+  .events .list { flex: 1; overflow-y: auto; margin-top: 6px; overscroll-behavior: contain; touch-action: pan-y; }
   .ev { display: grid; grid-template-columns: 96px 86px 1fr; gap: 10px; align-items: center; min-height: 48px; border-top: 1px solid var(--grid);
     font-size: 20px; }
   .ev .t { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 18px; }
@@ -348,6 +348,42 @@ document.querySelectorAll("[data-power]").forEach(b => {
     post("/api/power", { action }).catch(() => {});
   });
 });
+// ---- drag to scroll ----
+// labwc hands the touchscreen to Chromium as a mouse (mouseEmulation="yes" in rc.xml), so a finger swipe
+// arrives as a mouse drag and does not scroll. Scroll on that drag, with a short glide after release.
+// Real touch (pointerType "touch") is left to the browser's own scrolling.
+function dragScroll(box) {
+  let y0 = null, top0 = 0, moved = false, lastY = 0, lastT = 0, v = 0, glide = 0;
+  box.addEventListener("pointerdown", e => {
+    if (e.pointerType !== "mouse" || e.button !== 0) return;
+    cancelAnimationFrame(glide);
+    y0 = lastY = e.clientY; lastT = performance.now(); top0 = box.scrollTop; moved = false; v = 0;
+  });
+  window.addEventListener("pointermove", e => {
+    if (y0 === null) return;
+    const dy = e.clientY - y0;
+    if (!moved && Math.abs(dy) < 8) return;   // below this it is a tap, not a swipe
+    moved = true;
+    box.scrollTop = top0 - dy;
+    const now = performance.now();
+    v = (lastY - e.clientY) / Math.max(1, now - lastT); lastY = e.clientY; lastT = now;   // px per ms
+  });
+  window.addEventListener("pointerup", () => {
+    if (y0 === null) return;
+    y0 = null;
+    if (!moved || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let prev = performance.now();
+    const step = now => {
+      box.scrollTop += v * (now - prev); prev = now; v *= 0.94;
+      if (Math.abs(v) > 0.02) glide = requestAnimationFrame(step);
+    };
+    glide = requestAnimationFrame(step);
+  });
+  // a swipe that ends on a button must not also press it
+  box.addEventListener("click", e => { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; } }, true);
+}
+dragScroll($("events")); dragScroll($("settings"));
+
 poll(); setInterval(poll, 3000); setInterval(tick, 1000);
 pollScreen(); setInterval(pollScreen, 2000);
 </script>
