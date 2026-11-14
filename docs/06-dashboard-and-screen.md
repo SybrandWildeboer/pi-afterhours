@@ -32,6 +32,38 @@ On a Pi 5 without the GPU render node `/dev/dri/renderD128` (the author's has no
 
 If a later OS upgrade changes the stock unit, delete the copy to go back to the packaged one: `sudo rm /etc/systemd/system/lightdm.service && sudo systemctl daemon-reload`.
 
-## Screen blanking
+## Screen: dim, off and tap to wake
 
-The screen does not blank in the kiosk. If you lock the desktop with a leftover Chromium window, close it over SSH: `pkill chromium`; `kiosk.sh` starts it again.
+`maint-screen.service` runs `~/maint/app/screen.py`. It only changes the touchscreen's backlight
+(`/sys/class/backlight/*`, writable by the `video` group); the Pi and the dashboard keep running.
+
+- **Day:** the normal brightness.
+- **Evening** (from 20:00): dimmed.
+- **Night** (22:00 to 07:00): off. A tap turns it on, dimmed, for 2 minutes.
+- **No input for an hour:** off. Any touch, key or mouse movement turns it on again (it reads the
+  keyboard, mouse and touch devices under `/dev/input`, so your user must be in the `input` group;
+  the power button and HDMI events do not count).
+
+While the screen is off, the first tap only wakes it: the page lays a transparent layer over itself,
+so that tap does not press a button underneath.
+
+## Settings menu
+
+The ⚙ button at the top right opens the settings:
+
+- **Brightness** and **Evening brightness**.
+- **Dim from**, **Off from**, **Back on at**, and **Off after no touch** (15 min to 2 hours, or never).
+- **Screen off now**.
+- **Restart dashboard**, **Restart Pi** and **Shut down Pi**. Restart and shut down need a second tap
+  within 4 seconds. After a shut down the Pi stays off until you press its power button (Pi 5) or
+  reconnect power.
+
+The settings are saved in `app/screen.json` (local, not committed). The buttons call `POST /api/screen`
+and `POST /api/power` on the dashboard, which answers only on 127.0.0.1 and only to requests carrying the
+page's `X-Afterhours` header, so another website open in the kiosk browser cannot trigger them. Restart
+and shut down run `systemctl reboot`/`poweroff`, and fall back to `sudo -n` if the session may not.
+
+Check the decision for right now without changing anything: `python3 ~/maint/app/screen.py --once`.
+
+If you lock the desktop with a leftover Chromium window, close it over SSH: `pkill chromium`;
+`kiosk.sh` starts it again.

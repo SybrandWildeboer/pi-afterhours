@@ -3,6 +3,10 @@ app/config.json
 app/state.json*
 app/ledger*.csv
 app/events.jsonl
+app/screen.json
+app/screen-state.json
+app/screen-cmd.json
+app/*.tmp
 app/.lock
 .leakcheck-terms
 __pycache__/

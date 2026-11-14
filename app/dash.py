@@ -19,6 +19,7 @@ from pathlib import Path
 APP = Path(__file__).parent
 sys.path.insert(0, str(APP))
 import costs  # noqa: E402
+import screen  # noqa: E402
 
 HOME = Path.home()
 PROFILES = {"work": HOME / ".claude-profiles" / "work", "personal": HOME / ".claude-profiles" / "personal"}
@@ -314,10 +315,94 @@ def state():
         return _cache["v"]
 
 
+# ---- screen and power (settings menu) ---------------------------------------------------------
+POWER = {  # each is tried in order: plain systemctl (logind allows the local session), then sudo -n
+    "reboot": [["systemctl", "reboot"], ["sudo", "-n", "systemctl", "reboot"]],
+    "poweroff": [["systemctl", "poweroff"], ["sudo", "-n", "systemctl", "poweroff"]],
+    "restart-dashboard": [["systemctl", "--user", "restart", "maint-dash.service"]],
+}
+
+
+def screen_view():
+    try:
+        st = json.loads(screen.STATE.read_text())
+    except (OSError, ValueError):
+        st = {"mode": "unknown", "on": True, "level": None}
+    st["settings"] = screen.load_settings()
+    st["service"] = time.time() - float(st.get("updated", 0)) < 10  # the screen service wrote recently
+    return st
+
+
+def apply_screen(req):
+    """Validate a settings/command request from the page and store it. Returns (status, message)."""
+    action = req.get("action")
+    if action in ("off", "wake"):
+        tmp = screen.COMMAND.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"action": action, "at": time.time()}))
+        tmp.replace(screen.COMMAND)
+        return 200, action
+    settings = req.get("settings")
+    if not isinstance(settings, dict) or not settings or any(k not in screen.DEFAULTS for k in settings):
+        return 400, "unknown setting"
+    try:
+        current = json.loads(screen.SETTINGS.read_text())
+    except (OSError, ValueError):
+        current = {}
+    merged = screen.load_settings_from({**current, **settings})
+    tmp = screen.SETTINGS.with_suffix(".tmp")
+    tmp.write_text(json.dumps(merged, indent=2))
+    tmp.replace(screen.SETTINGS)
+    return 200, "saved"
+
+
+def run_power(action):
+    for cmd in POWER[action]:
+        try:
+            if subprocess.run(cmd, capture_output=True, timeout=20).returncode == 0:
+                return
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
 class Handler(BaseHTTPRequestHandler):
+    def send_json(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_POST(self):
+        # Only the page on this machine: loopback client, plus a custom header a cross-site form cannot send.
+        if self.client_address[0] not in ("127.0.0.1", "::1") or self.headers.get("X-Afterhours") != "1":
+            return self.send_error(403)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            req = json.loads(self.rfile.read(min(n, 4096)) or b"{}") if n <= 4096 else None
+        except ValueError:
+            req = None
+        if not isinstance(req, dict):
+            return self.send_error(400)
+        if self.path == "/api/screen":
+            code, msg = apply_screen(req)
+            return self.send_json(code, {"result": msg, "screen": screen_view()})
+        if self.path == "/api/power":
+            action = req.get("action")
+            if action not in POWER:
+                return self.send_error(400)
+            if DEMO:
+                return self.send_json(403, {"result": "not in demo mode"})
+            self.send_json(200, {"result": action})
+            threading.Timer(1.0, run_power, args=(action,)).start()  # answer first, then act
+            return
+        return self.send_error(404)
+
     def do_GET(self):
         if self.path.startswith("/api/state"):
             body, ctype = state(), "application/json"
+        elif self.path.startswith("/api/screen"):
+            body, ctype = json.dumps(screen_view()).encode(), "application/json"
         elif self.path in ("/", "/index.html"):
             body, ctype = (APP / "index.html").read_bytes(), "text/html; charset=utf-8"
         else:

@@ -1,0 +1,8 @@
+[Unit]
+Description=Touchscreen backlight: evening dim, night and idle off, tap to wake
+[Service]
+ExecStart=/usr/bin/python3 %h/maint/app/screen.py
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=default.target
