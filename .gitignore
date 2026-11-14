@@ -6,6 +6,7 @@ app/events.jsonl
 app/screen.json
 app/screen-state.json
 app/screen-cmd.json
+app/paused.json
 app/*.tmp
 app/.lock
 .leakcheck-terms

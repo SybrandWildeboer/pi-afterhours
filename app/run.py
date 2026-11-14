@@ -18,6 +18,7 @@ import costs
 import events
 import flows
 import fmt
+import loop
 import rules
 import state
 from llm import Agents
@@ -31,6 +32,9 @@ def main(argv):
     mode = args[0] if args else "gate"
     if mode == "cost":
         return print(costs.table(costs.read(ROOT / "ledger.csv")))
+    if mode in loop.MODES and loop.paused():  # paused from the dashboard: scheduled runs start nothing
+        print(f"[paused] the loop is paused from the dashboard: {mode} run skipped")
+        return
     try:
         cfg = config.load(ROOT / "config.json")
     except config.ConfigError as e:

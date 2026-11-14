@@ -32,6 +32,19 @@ On a Pi 5 without the GPU render node `/dev/dri/renderD128` (the author's has no
 
 If a later OS upgrade changes the stock unit, delete the copy to go back to the packaged one: `sudo rm /etc/systemd/system/lightdm.service && sudo systemctl daemon-reload`.
 
+## The loop card
+
+Under "Working on now", the **Loop** card shows the loop as a whole:
+
+- **Status:** running (which part and for how long), idle or paused, whether the crontab entries are
+  live or dry-run, and today's runs and failures.
+- **One column per scheduled part** (gate, full, dbx): the last run (✓ or ✕, time, duration) and the next
+  run, worked out from your crontab (`crontab -l`, read once a minute).
+- **Pause / Resume:** pausing writes `app/paused.json`; `run.py gate|full|dbx` then skips at once
+  (`[paused] ... run skipped` in `run.log`), before reading its config. A run already going finishes.
+  Manual `run.py spec` and `run.py cost` are not affected. The button calls `POST /api/loop`, guarded
+  like the settings menu.
+
 ## Screen: dim, off and tap to wake
 
 `maint-screen.service` runs `~/maint/app/screen.py`. It only changes the touchscreen's backlight

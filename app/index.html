@@ -82,6 +82,16 @@
   .note { color: var(--muted); font-size: 17px; }
   /* while the backlight is off, the first tap only wakes the screen, it does not press what is under it */
   #guard { position: fixed; inset: 0; z-index: 30; background: transparent; }
+  /* the loop as a whole: status, one row per scheduled part, pause/resume */
+  .loop-head { display: flex; align-items: center; gap: 12px; }
+  .loop-head .status { font-size: 19px; color: var(--text2); }
+  .loop-head .status b { color: var(--text); font-weight: 600; }
+  .loop-head button { margin-left: auto; }
+  .loop-head button.paused { border-color: var(--warning); color: var(--warning); }
+  #loop-parts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 6px; }
+  .part { display: grid; gap: 2px; font-size: 17px; border-left: 2px solid var(--grid); padding-left: 10px; min-width: 0; }
+  .part .m { font-weight: 600; font-size: 18px; }
+  .part .last, .part .next { color: var(--text2); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   @media (orientation: landscape) {
     .app { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto auto 1fr; gap: 10px 14px; padding: 10px 14px; }
     header { grid-column: 1 / -1; } .clock { font-size: 40px; }
@@ -100,6 +110,12 @@
   <div id="offline">⚠ no data from the Pi, retrying…</div>
 
   <section class="card now"><div class="label">WORKING ON NOW</div><div id="now"></div></section>
+
+  <section class="card loop">
+    <div class="loop-head"><div class="label">LOOP</div><div class="status" id="loop-status"></div>
+      <button class="tog" id="loop-toggle">Pause</button></div>
+    <div id="loop-parts"></div>
+  </section>
 
   <section class="tiles">
     <div class="card tile"><div class="label">COST TODAY (est.)</div><div class="value" id="k-cost">–</div><div class="sub" id="k-cost-sub"></div></div>
@@ -168,6 +184,8 @@ function render(s) {
     chip(s.remote === "active" ? "Remote on" : "Remote " + s.remote, s.remote === "active" ? "ok" : "bad"),
     s.last_run ? chip(s.last_run.text.replace(" run ", " ") + " · " + hhmm(s.last_run.ts), s.last_run.ok ? "ok" : "bad") : chip("no loop runs yet", "none"),
     chip(Math.round(sys.temp) + "°C · mem " + sys.mem_pct + "%", sys.temp >= 70 ? "warn" : "ok"));
+
+  renderLoop(s.loop);
 
   const now = $("now"); now.replaceChildren();
   if (!s.now_working.length) now.append(el("div", "idle", "Idle. Next check on the schedule."));
@@ -257,6 +275,34 @@ async function poll() {
   } catch (e) { if (++fails >= 2) $("offline").style.display = "block"; }
 }
 $("tog").addEventListener("click", () => { tableView = !tableView; if (S) drawChart(S.hourly); });
+
+// ---- the loop card ----
+const dur = secs => secs == null ? "" : secs < 90 ? secs + "s" : Math.round(secs / 60) + "m";
+const dayTime = ts => { const d = new Date(ts * 1000), today = new Date().toDateString() === d.toDateString();
+  return today ? hhmm(ts) : d.toLocaleDateString([], { weekday: "short" }) + " " + hhmm(ts); };
+let loopPaused = false;
+function renderLoop(L) {
+  if (!L) return;
+  loopPaused = !!L.paused;
+  const st = $("loop-status"); st.replaceChildren();
+  const mode = L.live === true ? "live" : L.live === false ? "dry-run" : L.scheduled ? "mixed" : "not scheduled";
+  const now = L.paused ? `paused since ${dayTime(L.paused.since)}` : L.running ? `running ${L.running.mode} · ${ago(L.running.since)}` : "idle";
+  st.append(el("b", "", now), document.createTextNode(` · ${mode} · today ${L.today.runs} runs` + (L.today.failed ? `, ${L.today.failed} failed` : "")));
+  const b = $("loop-toggle"); b.textContent = L.paused ? "Resume" : "Pause"; b.classList.toggle("paused", !!L.paused);
+  const parts = $("loop-parts"); parts.replaceChildren();
+  for (const p of L.parts) {
+    const r = el("div", "part");
+    const last = p.last ? `${p.last.ok ? "✓" : "✕"} ${dayTime(p.last.ts)} · ${dur(p.last.secs)}` : "no run yet";
+    const lastEl = el("span", "last", last); if (p.last && !p.last.ok) lastEl.style.color = "var(--critical)";
+    r.title = p.label || p.cron;  // the schedule in words, from the crontab comment
+    r.append(el("span", "m", p.mode), lastEl, el("span", "next", L.paused ? "paused" : p.next ? "next " + dayTime(p.next) : "–"));
+    parts.append(r);
+  }
+}
+$("loop-toggle").addEventListener("click", async () => {
+  $("loop-toggle").disabled = true;
+  try { await post("/api/loop", { action: loopPaused ? "resume" : "pause" }); await poll(); } finally { $("loop-toggle").disabled = false; }
+});
 
 // ---- settings menu and screen guard ----
 const post = (path, body) => fetch(path, { method: "POST", cache: "no-store",

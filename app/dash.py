@@ -19,6 +19,7 @@ from pathlib import Path
 APP = Path(__file__).parent
 sys.path.insert(0, str(APP))
 import costs  # noqa: E402
+import loop  # noqa: E402
 import screen  # noqa: E402
 
 HOME = Path.home()
@@ -141,6 +142,20 @@ def tail_events(path, limit=8):
     if size > 80_000:  # the read started mid-file, so its first line is cut in half
         data = data[1:]
     return parse_lines(data, {})[-limit:]
+
+
+_crontab = {"t": 0.0, "v": ""}
+
+
+def crontab_text():
+    """The user's crontab, cached for a minute (it only changes on install or go-live)."""
+    if time.time() - _crontab["t"] > 60:
+        try:
+            _crontab["v"] = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            _crontab["v"] = ""
+        _crontab["t"] = time.time()
+    return _crontab["v"]
 
 
 def read_events():
@@ -268,7 +283,8 @@ def build_state():
     return {"now": now_ts, "today": today, "total": tot, "profiles": prof, "now_working": live + active,
             "has_cost": bool(ledger or band),  # False: show tokens only, cost as n/a
             "hourly": hourly(items, now), "events": ev_rows[:60], "system": system(), "remote": remote_state(),
-            "last_run": ({"ts": runs[-1]["ts"], "ok": runs[-1].get("ok", True), "text": runs[-1]["text"]} if runs else None)}
+            "last_run": ({"ts": runs[-1]["ts"], "ok": runs[-1].get("ok", True), "text": runs[-1]["text"]} if runs else None),
+            "loop": loop.summary(evs, crontab_text(), now_ts)}
 
 
 def demo_state(now):
@@ -299,7 +315,14 @@ def demo_state(now):
             "has_cost": True, "hourly": hourly_,
             "events": [{"ts": t - age, "src": src, "text": text, "ok": ok} for age, src, text, ok in ev],
             "system": {"temp": 51.0, "load": 0.4, "mem_pct": 38, "disk_pct": 12, "uptime_h": 26.5},
-            "remote": "active", "last_run": {"ts": t - 1500, "ok": True, "text": "full run done in 74s"}}
+            "remote": "active", "last_run": {"ts": t - 1500, "ok": True, "text": "full run done in 74s"},
+            "loop": {"scheduled": True, "live": False, "paused": None, "running": None, "today": {"runs": 14, "failed": 1},
+                     "parts": [{"mode": "gate", "label": "listen for requests (spec / scan now) every 30 min, 07:00-21:30",
+                                "cron": "*/30 7-21 * * *", "last": {"ts": t - 1500, "ok": True, "secs": 28}, "next": t + 300},
+                               {"mode": "full", "label": "PRs, failing CI, audits. Hourly on weekdays 08:05-18:05",
+                                "cron": "5 8-18 * * 1-5", "last": {"ts": t - 3300, "ok": True, "secs": 74}, "next": t + 2100},
+                               {"mode": "dbx", "label": "once on weekday mornings", "cron": "10 7 * * 1-5",
+                                "last": {"ts": t - 26000, "ok": False, "secs": 41}, "next": t + 60000}]}}
 
 
 DEMO = False  # set by --demo
@@ -387,6 +410,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/screen":
             code, msg = apply_screen(req)
             return self.send_json(code, {"result": msg, "screen": screen_view()})
+        if self.path == "/api/loop":
+            action = req.get("action")
+            if action not in ("pause", "resume"):
+                return self.send_error(400)
+            if DEMO:
+                return self.send_json(403, {"result": "not in demo mode"})
+            loop.set_paused(action == "pause")
+            with _lock:
+                _cache["t"] = 0  # the next /api/state shows it at once
+            return self.send_json(200, {"result": action, "paused": loop.paused()})
         if self.path == "/api/power":
             action = req.get("action")
             if action not in POWER:

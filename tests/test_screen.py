@@ -145,3 +145,101 @@ class Endpoints(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- the loop card ----------------------------------------------------------------------------------
+import loop  # noqa: E402
+
+CRONTAB = """PATH=/usr/bin
+# Slack: listen for requests (spec / scan now) every 30 min, 07:00-21:30
+*/30 7-21 * * * cd ~/maint/app && python3 run.py gate --live >> run.log 2>&1
+# Repos: PRs, failing CI, audits. Hourly on weekdays 08:05-18:05
+5 8-18 * * 1-5 cd ~/maint/app && python3 run.py full --live >> run.log 2>&1
+10 7 * * 1-5 cd ~/maint/app && python3 run.py dbx --live >> run.log 2>&1
+"""
+
+
+class LoopSchedule(unittest.TestCase):
+    def test_crontab_entries_with_their_comment_and_live_flag(self):
+        parts = loop.parse_crontab(CRONTAB)
+        self.assertEqual([(p["mode"], p["cron"], p["live"]) for p in parts],
+                         [("gate", "*/30 7-21 * * *", True), ("full", "5 8-18 * * 1-5", True), ("dbx", "10 7 * * 1-5", True)])
+        self.assertEqual(parts[0]["label"], "listen for requests (spec / scan now) every 30 min, 07:00-21:30")
+        self.assertEqual(parts[2]["label"], "")
+
+    def test_next_run(self):
+        fri_2140 = datetime(2026, 11, 13, 21, 40)  # a Friday
+        self.assertEqual(loop.next_run("*/30 7-21 * * *", fri_2140), datetime(2026, 11, 14, 7, 0))
+        self.assertEqual(loop.next_run("5 8-18 * * 1-5", fri_2140), datetime(2026, 11, 16, 8, 5))  # Monday
+        self.assertEqual(loop.next_run("10 7 * * 1-5", datetime(2026, 11, 16, 7, 9)), datetime(2026, 11, 16, 7, 10))
+
+
+class LoopRuns(unittest.TestCase):
+    EVENTS = [
+        {"ts": 100.0, "source": "loop", "phase": "start", "kind": "run", "id": "a", "text": "gate run"},
+        {"ts": 128.0, "source": "loop", "phase": "end", "kind": "end", "id": "a", "text": "gate run done in 28s", "ok": True},
+        {"ts": 200.0, "source": "loop", "phase": "start", "kind": "run", "id": "b", "text": "full run"},
+        {"ts": 241.0, "source": "loop", "phase": "end", "kind": "end", "id": "b", "text": "full run crashed in 41s", "ok": False},
+        {"ts": 300.0, "source": "loop", "phase": "start", "kind": "run", "id": "c", "text": "gate run"},
+        {"ts": 310.0, "source": "work", "phase": "start", "kind": "run", "id": "x", "text": "gate run"},  # not the loop
+    ]
+
+    def test_runs_pair_start_and_end_and_keep_the_one_still_running(self):
+        rs = loop.runs(self.EVENTS)
+        self.assertEqual([(r["mode"], r["ok"], r["secs"]) for r in rs], [("gate", True, 28), ("full", False, 41), ("gate", None, None)])
+
+    def test_summary_shows_last_run_per_part_running_and_paused(self):
+        with tempfile.TemporaryDirectory() as d:
+            saved = loop.PAUSE
+            loop.PAUSE = Path(d) / "paused.json"
+            try:
+                s = loop.summary(self.EVENTS, CRONTAB, now=320.0)
+                self.assertEqual(s["running"], {"mode": "gate", "since": 300.0})
+                self.assertIs(s["live"], True)
+                full = next(p for p in s["parts"] if p["mode"] == "full")
+                self.assertEqual(full["last"], {"ts": 200.0, "ok": False, "secs": 41})
+                self.assertIsNone(s["paused"])
+                loop.set_paused(True)
+                self.assertIsNotNone(loop.summary(self.EVENTS, CRONTAB, now=320.0)["paused"])
+                loop.set_paused(False)
+                self.assertIsNone(loop.paused())
+            finally:
+                loop.PAUSE = saved
+
+    def test_no_crontab_means_not_scheduled(self):
+        s = loop.summary([], "", now=0.0)
+        self.assertEqual((s["scheduled"], s["live"], s["parts"]), (False, None, []))
+
+
+class LoopPauseEndpoint(Endpoints):
+    def test_pause_is_refused_in_demo_and_without_the_header(self):
+        self.assertEqual(self.post("/api/loop", {"action": "pause"}, header=False)[0], 403)
+        self.assertEqual(self.post("/api/loop", {"action": "stop"})[0], 400)
+        self.assertEqual(self.post("/api/loop", {"action": "pause"})[0], 403)  # demo mode
+
+    def test_pause_and_resume_write_the_pause_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            saved = loop.PAUSE
+            loop.PAUSE, dash.DEMO = Path(d) / "paused.json", False
+            try:
+                self.assertEqual(self.post("/api/loop", {"action": "pause"})[0], 200)
+                self.assertTrue(loop.PAUSE.exists())
+                self.assertEqual(self.post("/api/loop", {"action": "resume"})[0], 200)
+                self.assertFalse(loop.PAUSE.exists())
+            finally:
+                loop.PAUSE, dash.DEMO = saved, True
+
+
+class RunPy(unittest.TestCase):
+    def test_a_paused_loop_skips_scheduled_runs_before_reading_config(self):
+        import os
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            pause = Path(d) / "paused.json"
+            pause.write_text('{"since": 1}')
+            env = {**os.environ, "MAINT_PAUSE": str(pause), "MAINT_EVENTS": str(Path(d) / "events.jsonl")}
+            for mode in ("gate", "full", "dbx"):
+                r = subprocess.run([sys.executable, str(ROOT / "app" / "run.py"), mode], capture_output=True, text=True, env=env, timeout=30)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn(f"{mode} run skipped", r.stdout)
+            self.assertFalse((Path(d) / "events.jsonl").exists())  # nothing started
