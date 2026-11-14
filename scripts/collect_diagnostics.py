@@ -23,7 +23,7 @@ IPV6 = re.compile(rf"(?<![\w:])(?:{HEX}:){{4,7}}{HEX}(?![\w:])"                 
                   rf"|(?<![\w:])(?:{HEX}(?::{HEX}){{0,6}})?::(?:{HEX}(?::{HEX}){{0,6}})?(?![\w:])")  # or compressed with ::
 IPV4 = re.compile(r"(?<![\w.-])(?:\d{1,3}\.){3}\d{1,3}(?![\w-]|\.\d)")  # not a four-number kernel version followed by -name, nor a five-number version
 KEEP_IPS = {"127.0.0.1", "0.0.0.0"}  # useful and harmless
-SERVICES = ("maint-dash", "claude-remote", "claude-remote-work")
+SERVICES = ("maint-dash", "maint-screen", "claude-remote", "claude-remote-work")
 
 
 SSID_LINE = re.compile(r"(?m)^(\s*SSID:\s*).+$")

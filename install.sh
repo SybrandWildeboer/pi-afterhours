@@ -113,11 +113,11 @@ act "copy the loop and dashboard to $HOME_DIR/maint/app (config.json, state and 
 echo "  next: copy app/config.example.json to config.json and edit it (docs/05-maintenance-loop.md)"
 
 phase services
-for u in claude-remote claude-remote-work maint-dash; do put "$STAGE/systemd/$u.service" "$HOME_DIR/.config/systemd/user/$u.service"; done
+for u in claude-remote claude-remote-work maint-dash maint-screen; do put "$STAGE/systemd/$u.service" "$HOME_DIR/.config/systemd/user/$u.service"; done
 for f in claude-remote-settings.json claude-remote-work-settings.json; do put "$STAGE/etc/$f" "/etc/$f"; done
 if [ "$SKIP_SYSTEM" = 0 ]; then
   act "enable lingering so the services start at boot" ${SUDO:+"$SUDO"} loginctl enable-linger "$USER_NAME"
-  act "start the dashboard service" bash -c 'systemctl --user daemon-reload && systemctl --user enable --now maint-dash.service'
+  act "start the dashboard and screen services" bash -c 'systemctl --user daemon-reload && systemctl --user enable --now maint-dash.service maint-screen.service'
   echo "  the Remote Control services are enabled after both profiles are logged in (see the logins phase)"
 fi
 

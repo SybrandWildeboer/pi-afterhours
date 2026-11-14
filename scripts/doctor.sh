@@ -57,7 +57,7 @@ if gh auth status >/dev/null 2>&1; then ok "gh logged in"; else fail "gh" "not l
 if [ "$channel" = "-" ]; then skip "slack" "off (channel is empty in config.json)"
 elif CLAUDE_CONFIG_DIR="$HOME_DIR/.claude-profiles/$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("profile","work"))' "$CFG")" claude mcp list 2>/dev/null | grep -i slack | grep -q Connected; then ok "slack connector"
 else fail "slack connector" "not connected: connect Slack in claude.ai for the loop's profile"; fi
-for u in maint-dash claude-remote claude-remote-work; do
+for u in maint-dash maint-screen claude-remote claude-remote-work; do
   if [ "$(systemctl --user is-active "$u" 2>/dev/null)" = active ]; then ok "service $u"; else fail "service $u" "not active: systemctl --user status $u"; fi
 done
 if curl -sf -m 5 http://127.0.0.1:8787/api/state >/dev/null; then ok "dashboard answers on 127.0.0.1:8787"; else fail "dashboard" "no answer on 127.0.0.1:8787"; fi

@@ -15,7 +15,7 @@ Unattended AI agents, on a small always-on computer, holding: a GitHub token, on
 - **Narrow write paths.** The fix agent may not run `git commit`, `git push` or `gh pr create` directly (those accept file arguments such as `-F` or `--body-file` that could copy a token into a commit or PR). It runs `maint-commit`, `push-maint` and `maint-pr`: wrapper scripts with fixed arguments that work only on a `maint/<name>` branch, take the message and body as literal text, and never run repository hooks. The worktree is created by code, not by the model.
 - **The permission mode is forced** to `default` on every agent call, so a `bypassPermissions` default in the profile's own settings is not inherited. The profile's allow rules and hooks (`--setting-sources user`) still load: keep the loop profile's `settings.json` free of broad `Bash(*)` allows.
 - **Settings are scoped** with `--setting-sources user`, so a repository's own `.claude/settings.json` cannot widen the agents' permissions, and only the Slack agents get any connectors (`--strict-mcp-config` for the rest).
-- **The dashboard binds to localhost** only.
+- **The dashboard binds to localhost** only. Its settings menu can restart or shut down the Pi (`POST /api/power`, an allowlist of three actions); the dashboard accepts those only from 127.0.0.1 with the page's `X-Afterhours` header, and never in `--demo` mode.
 - **Remote Control asks before acting** (`--permission-mode default`).
 - **A diagnostics collector redacts** emails, IPs, MACs, tokens, your username and hostname before you share anything.
 

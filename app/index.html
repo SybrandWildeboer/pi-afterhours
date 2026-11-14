@@ -59,6 +59,29 @@
   .ev .what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ev.fail .what::before { content: "✕ "; color: var(--critical); }
   #offline { display: none; color: var(--warning); text-align: center; font-size: 18px; }
+  /* settings menu: big touch targets, one sheet over the dashboard */
+  .head-right { display: flex; align-items: center; gap: 12px; }
+  button.gear { background: none; border: 1px solid var(--axis); color: var(--text2); border-radius: 12px; font: inherit; font-size: 28px;
+    min-width: 56px; min-height: 56px; line-height: 1; }
+  #settings { position: fixed; inset: 0; background: var(--plane); z-index: 20; padding: 18px 16px; overflow-y: auto; }
+  #settings[hidden], #guard[hidden] { display: none; }
+  #settings h2 { font-size: 30px; font-weight: 600; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .set { display: grid; gap: 10px; margin-bottom: 12px; }
+  .set .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 56px; }
+  .set .row + .row { border-top: 1px solid var(--grid); }
+  .set .val { color: var(--text2); font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+  input[type=range] { flex: 1; height: 44px; accent-color: var(--work); }
+  select { font: inherit; font-size: 20px; color: var(--text); background: var(--surface); border: 1px solid var(--axis); border-radius: 10px;
+    min-height: 52px; padding: 0 12px; }
+  button.act { font: inherit; font-size: 20px; color: var(--text); background: var(--surface); border: 1px solid var(--axis);
+    border-radius: 12px; min-height: 60px; width: 100%; }
+  button.act.danger { border-color: var(--critical); color: var(--critical); }
+  button.act.armed { background: var(--critical); color: var(--text); }
+  .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .note { color: var(--muted); font-size: 17px; }
+  /* while the backlight is off, the first tap only wakes the screen, it does not press what is under it */
+  #guard { position: fixed; inset: 0; z-index: 30; background: transparent; }
   @media (orientation: landscape) {
     .app { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto auto 1fr; gap: 10px 14px; padding: 10px 14px; }
     header { grid-column: 1 / -1; } .clock { font-size: 40px; }
@@ -71,7 +94,8 @@
 <div class="app">
   <header>
     <div><div class="clock" id="clock">--:--</div><div class="date" id="date"></div></div>
-    <div class="chips" id="chips"></div>
+    <div class="head-right"><div class="chips" id="chips"></div>
+      <button class="gear" id="gear" aria-label="Settings">⚙</button></div>
   </header>
   <div id="offline">⚠ no data from the Pi, retrying…</div>
 
@@ -94,6 +118,33 @@
   </section>
 
   <section class="card events"><div class="label">EVENTS</div><div class="list" id="events"></div></section>
+</div>
+
+<div id="guard" hidden></div>
+<div id="settings" hidden role="dialog" aria-label="Settings">
+  <div class="sheet-head"><h2>Settings</h2><button class="tog" id="close">Close</button></div>
+  <section class="card set">
+    <div class="label">SCREEN</div>
+    <div class="row"><span>Brightness</span><input type="range" id="day" min="2" max="100" step="1"><span class="val" id="day-v"></span></div>
+    <div class="row"><span>Evening brightness</span><input type="range" id="dim" min="2" max="100" step="1"><span class="val" id="dim-v"></span></div>
+    <div class="row"><span>Dim from</span><select id="dim_from"></select></div>
+    <div class="row"><span>Off from</span><select id="quiet_from"></select></div>
+    <div class="row"><span>Back on at</span><select id="quiet_to"></select></div>
+    <div class="row"><span>Off after no touch</span><select id="idle_minutes">
+      <option value="15">15 min</option><option value="30">30 min</option><option value="60">1 hour</option>
+      <option value="120">2 hours</option><option value="0">Never</option></select></div>
+    <div class="note" id="screen-note"></div>
+    <button class="act" id="off-now">Screen off now</button>
+  </section>
+  <section class="card set">
+    <div class="label">PI</div>
+    <div class="acts">
+      <button class="act" id="p-dash" data-power="restart-dashboard">Restart dashboard</button>
+      <button class="act danger" id="p-reboot" data-power="reboot">Restart Pi</button>
+      <button class="act danger" id="p-off" data-power="poweroff">Shut down Pi</button>
+    </div>
+    <div class="note">Restart and shut down ask for a second tap. After a shut down, start the Pi with its power button.</div>
+  </section>
 </div>
 
 <script>
@@ -206,7 +257,53 @@ async function poll() {
   } catch (e) { if (++fails >= 2) $("offline").style.display = "block"; }
 }
 $("tog").addEventListener("click", () => { tableView = !tableView; if (S) drawChart(S.hourly); });
+
+// ---- settings menu and screen guard ----
+const post = (path, body) => fetch(path, { method: "POST", cache: "no-store",
+  headers: { "Content-Type": "application/json", "X-Afterhours": "1" }, body: JSON.stringify(body) }).then(r => r.json());
+const times = (from, to, step) => { const out = []; for (let m = from; m <= to; m += step) out.push(`${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`); return out; };
+const fill = (id, opts) => { const s = $(id); s.replaceChildren(...opts.map(v => { const o = el("option", "", v); o.value = v; return o; })); };
+fill("dim_from", times(17 * 60, 23 * 60, 30)); fill("quiet_from", times(19 * 60, 24 * 60, 30)); fill("quiet_to", times(4 * 60, 10 * 60, 30));
+const setVal = (id, v) => { const s = $(id); if (![...s.options].some(o => o.value === String(v))) { const o = el("option", "", String(v)); o.value = String(v); s.append(o); } s.value = String(v); };
+let editing = false;   // do not overwrite a slider while a finger is on it
+function showScreen(sc) {
+  const off = sc && sc.service && sc.on === false;
+  $("guard").hidden = !off || !$("settings").hidden;
+  if (!sc || editing) return;
+  const st = sc.settings;
+  $("day").value = Math.round(st.day_brightness * 100); $("day-v").textContent = $("day").value + "%";
+  $("dim").value = Math.round(st.dim_brightness * 100); $("dim-v").textContent = $("dim").value + "%";
+  setVal("dim_from", st.dim_from); setVal("quiet_from", st.quiet_from); setVal("quiet_to", st.quiet_to); setVal("idle_minutes", st.idle_minutes);
+  $("screen-note").textContent = sc.service ? `Now: ${sc.mode}. A tap turns the screen on.` : "The screen service is not running: these settings take effect once it runs.";
+}
+async function pollScreen() { try { showScreen(await (await fetch("/api/screen", { cache: "no-store" })).json()); } catch (e) {} }
+const save = settings => post("/api/screen", { settings }).then(r => showScreen(r.screen));
+for (const [id, key] of [["day", "day_brightness"], ["dim", "dim_brightness"]]) {
+  $(id).addEventListener("input", () => { editing = true; $(id + "-v").textContent = $(id).value + "%"; });
+  $(id).addEventListener("change", () => { editing = false; save({ [key]: $(id).value / 100 }); });
+}
+for (const id of ["dim_from", "quiet_from", "quiet_to"]) $(id).addEventListener("change", () => save({ [id]: $(id).value }));
+$("idle_minutes").addEventListener("change", () => save({ idle_minutes: +$("idle_minutes").value }));
+$("gear").addEventListener("click", () => { $("settings").hidden = false; pollScreen(); });
+$("close").addEventListener("click", () => { $("settings").hidden = true; });
+$("off-now").addEventListener("click", () => { $("settings").hidden = true; post("/api/screen", { action: "off" }).then(r => showScreen(r.screen)); });
+$("guard").addEventListener("pointerdown", e => { e.preventDefault(); $("guard").hidden = true; post("/api/screen", { action: "wake" }); });
+document.querySelectorAll("[data-power]").forEach(b => {
+  const label = b.textContent; let armed = null;
+  b.addEventListener("click", () => {
+    const action = b.dataset.power;
+    if (action !== "restart-dashboard" && !armed) {   // destructive: a second tap within 4 s confirms
+      b.classList.add("armed"); b.textContent = "Tap again to confirm";
+      armed = setTimeout(() => { armed = null; b.classList.remove("armed"); b.textContent = label; }, 4000);
+      return;
+    }
+    clearTimeout(armed); armed = null; b.classList.remove("armed");
+    b.textContent = action === "poweroff" ? "Shutting down…" : "Restarting…";
+    post("/api/power", { action }).catch(() => {});
+  });
+});
 poll(); setInterval(poll, 3000); setInterval(tick, 1000);
+pollScreen(); setInterval(pollScreen, 2000);
 </script>
 </body>
 </html>
